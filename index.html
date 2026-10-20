@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Statistik Kunjungan Jurnal · OJS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand: #9b0000;
+      --brand-light: rgba(155,0,0,0.08);
+      --brand-mid: rgba(155,0,0,0.18);
+      --ga-blue: #1a73e8;
+      --ga-green: #34a853;
+      --ga-yellow: #fbbc04;
+      --ga-red: #ea4335;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: #f0f2f7;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      color: #1e293b;
+    }
+
+    /* ── STAT CARDS ── */
+    .card-stat {
+      border: none;
+      border-radius: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      background: white;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .card-stat:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.1); }
+    .stat-icon {
+      width: 48px; height: 48px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; flex-shrink: 0;
+    }
+    .sparkline-wrap { height: 40px; width: 110px; }
+    .comp-pill {
+      font-size: .72rem; font-weight: 700; border-radius: 30px;
+      padding: 2px 9px; display: inline-flex; align-items: center; gap: 3px;
+    }
+    .comp-up { background: #e6f7e6; color: #0b6e0b; }
+    .comp-down { background: #fde8e8; color: #9b0000; }
+    .comp-neu { background: #f1f5f9; color: #64748b; }
+
+    /* ── FILTER ── */
+    .filter-btn-group .btn {
+      border-radius: 40px; padding: .4rem 1.1rem; font-weight: 600;
+      font-size: .82rem; border: 1.5px solid #dee2e6; background: white;
+      color: #495057; margin: .15rem; transition: all .15s;
+    }
+    .filter-btn-group .btn.active {
+      background: var(--brand); border-color: var(--brand);
+      color: white; box-shadow: 0 4px 10px rgba(155,0,0,.25);
+    }
+    .realtime-badge {
+      background: #e6f7e6; color: #0b6e0b; border-radius: 40px;
+      padding: .3rem 1rem; font-weight: 700; font-size: .78rem;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .pulse-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #2ecc71;
+      animation: pulse-anim 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-anim {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .5; transform: scale(1.4); }
+    }
+
+    /* ── GA BADGE ── */
+    .ga-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: white; border: 1.5px solid #e8eaed;
+      border-radius: 12px; padding: 6px 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+    .ga-dot { width: 9px; height: 9px; border-radius: 50%; }
+
+    /* ── GEOMAP ── */
+    .geomap-container {
+      position: relative; border-radius: 20px; overflow: hidden;
+      background: linear-gradient(135deg, #f8faff 0%, #eef2ff 100%);
+      border: 1.5px solid #e2e8f0; min-height: 320px;
+    }
+    .geomap-svg-wrap {
+      position: relative; width: 100%; cursor: default;
+    }
+    #world-map-svg { width: 100%; height: auto; display: block; }
+
+    .map-bubble-pulse {
+      animation: bubble-grow .3s ease-out forwards;
+    }
+    @keyframes bubble-grow {
+      from { r: 0; opacity: 0; }
+      to   { opacity: 1; }
+    }
+    .marker-ring {
+      fill: none; stroke-opacity: .5;
+      animation: ring-expand 2s ease-out infinite;
+    }
+    @keyframes ring-expand {
+      0%   { r: 0; stroke-opacity: .6; stroke-width: 3; }
+      80%  { r: 22px; stroke-opacity: 0; stroke-width: 1; }
+      100% { r: 22px; stroke-opacity: 0; }
+    }
+
+    /* Tooltip */
+    #map-tooltip {
+      position: fixed; z-index: 9999; pointer-events: none;
+      background: white; border-radius: 14px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.18);
+      padding: 14px 16px; min-width: 200px;
+      border: 1.5px solid #f1f5f9;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      display: none; transition: opacity .15s;
+    }
+    #map-tooltip.visible { display: block; }
+    #map-tooltip .tt-country { font-weight: 700; font-size: .95rem; margin-bottom: 8px; }
+    #map-tooltip .tt-row { display: flex; justify-content: space-between; font-size: .8rem; gap: 16px; margin-bottom: 3px; }
+    #map-tooltip .tt-label { color: #64748b; }
+    #map-tooltip .tt-val { font-weight: 700; color: var(--brand); }
+    #map-tooltip .tt-bar { height: 4px; border-radius: 4px; background: #f1f5f9; margin-top: 8px; }
+    #map-tooltip .tt-bar-inner { height: 4px; border-radius: 4px; background: var(--brand); transition: width .3s; }
+    #map-tooltip .tt-click-hint { font-size: .72rem; color: #94a3b8; margin-top: 8px; text-align: center; }
+
+    /* Country List */
+    .country-list-scroll { max-height: 320px; overflow-y: auto; padding-right: 4px; }
+    .country-list-scroll::-webkit-scrollbar { width: 4px; }
+    .country-list-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+    .country-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: .6rem .8rem; border-radius: 12px; cursor: pointer;
+      transition: background .15s, transform .15s; margin-bottom: 3px;
+    }
+    .country-item:hover { background: #fff0f0; transform: translateX(2px); }
+    .country-item.active { background: #fce8e8; border-left: 4px solid var(--brand); }
+    .country-flag { font-size: 1.5rem; line-height: 1; }
+    .country-bar-wrap { flex: 1; }
+    .country-name { font-size: .82rem; font-weight: 600; color: #1e293b; }
+    .country-sessions { font-size: .78rem; font-weight: 700; color: var(--brand); }
+    .c-bar { height: 5px; border-radius: 5px; background: #f1f5f9; margin-top: 4px; }
+    .c-bar-fill { height: 5px; border-radius: 5px; background: linear-gradient(90deg, var(--brand), #e05252); transition: width .6s cubic-bezier(.4,0,.2,1); }
+
+    #country-info-panel {
+      display: none; background: linear-gradient(135deg, #fff5f5, #fff);
+      border: 1.5px solid #fecaca; border-radius: 16px; padding: 16px;
+      margin-bottom: 12px; animation: slideDown .2s ease-out;
+    }
+    @keyframes slideDown {
+      from { opacity:0; transform: translateY(-8px); }
+      to   { opacity:1; transform: translateY(0); }
+    }
+    #country-info-panel.visible { display: block; }
+
+    .badge-period {
+      background: #f1f5f9; color: #1e293b; font-weight: 600;
+      padding: .35rem 1rem; border-radius: 30px; font-size: .8rem;
+    }
+    .badge-agg {
+      background: #eef2ff; color: #4f46e5; font-weight: 700;
+      padding: .3rem .8rem; border-radius: 30px; font-size: .72rem;
+    }
+    .text-brand { color: var(--brand); }
+    .skeleton {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%; animation: shimmer 1.5s infinite;
+      border-radius: 8px; display: inline-block;
+    }
+    .skeleton-lg { width: 90px; height: 2.2rem; }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .chart-container { position: relative; height: 300px; width: 100%; }
+    .table-hover tbody tr:hover { background: #fef2f2; }
+    .selected-country-chip {
+      display: none; background: var(--brand); color: white;
+      border-radius: 40px; padding: 3px 12px; font-size: .78rem;
+      font-weight: 700; align-items: center; gap: 6px;
+    }
+    .selected-country-chip.visible { display: inline-flex; }
+    .chip-x { cursor: pointer; opacity: .8; }
+    .chip-x:hover { opacity: 1; }
+
+    .comp-line-chart { height: 50px; }
+    .trend-section {
+      background: #f8faff; border-radius: 16px; padding: 14px;
+      border: 1.5px solid #e2e8f0; margin-top: 8px;
+    }
+    .trend-label { font-size: .72rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .trend-value { font-size: 1rem; font-weight: 800; }
+  </style>
+</head>
+<body class="p-3 p-md-4">
+
+<!-- MAP TOOLTIP -->
+<div id="map-tooltip">
+  <div class="tt-country" id="tt-country">–</div>
+  <div class="tt-row"><span class="tt-label">Sessions</span><span class="tt-val" id="tt-sessions">–</span></div>
+  <div class="tt-row"><span class="tt-label">Pengunjung</span><span class="tt-val" id="tt-users">–</span></div>
+  <div class="tt-row"><span class="tt-label">Page Views</span><span class="tt-val" id="tt-pageviews">–</span></div>
+  <div class="tt-row"><span class="tt-label">Baru</span><span class="tt-val" id="tt-newusers">–</span></div>
+  <div class="tt-bar"><div class="tt-bar-inner" id="tt-bar-inner" style="width:0%"></div></div>
+  <div class="tt-click-hint">🖱️ Klik untuk filter data</div>
+</div>
+
+<div class="container-xl px-0 px-lg-2" id="sjv">
+
+  <!-- HEADER -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between mb-4 gap-3">
+    <div>
+      <h2 class="fw-bold mb-1" style="color:#1e293b; font-size:1.6rem;">
+        <i class="bi bi-bar-chart-fill me-2" style="color:var(--brand)"></i>Statistik Kunjungan Jurnal
+      </h2>
+      <div class="d-flex align-items-center gap-3 mt-1 flex-wrap">
+        <span class="text-secondary small"><i class="bi bi-calendar3 me-1"></i><span id="sjv-period-label">Hari Ini</span></span>
+        <div class="realtime-badge"><div class="pulse-dot"></div><span id="sjv-rt">0</span> online sekarang</div>
+      </div>
+    </div>
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <div class="ga-badge">
+        <div style="display:flex;gap:3px;align-items:center;">
+          <div class="ga-dot" style="background:var(--ga-blue)"></div>
+          <div class="ga-dot" style="background:var(--ga-red)"></div>
+          <div class="ga-dot" style="background:var(--ga-yellow)"></div>
+          <div class="ga-dot" style="background:var(--ga-green)"></div>
+        </div>
+        <span style="font-weight:700;font-size:.82rem;color:#202124;">Google Analytics</span>
+        <span style="font-size:.72rem;color:#5f6368;border-left:1px solid #e8eaed;padding-left:8px;">Data Resmi</span>
+      </div>
+      <span class="badge rounded-pill bg-light border text-secondary px-3 py-2" id="sjv-ts" style="font-size:.78rem;">⏳ Memuat...</span>
+    </div>
+  </div>
+
+  <!-- ERROR -->
+  <div class="alert alert-danger d-none" id="sjv-err"></div>
+
+  <!-- FILTER -->
+  <div class="card card-stat p-3 mb-4">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="fw-semibold text-secondary small"><i class="bi bi-funnel me-1"></i>Periode:</span>
+      <div class="filter-btn-group d-flex flex-wrap">
+        <button class="btn filter-btn active" data-days="1"   data-label="Hari Ini">Hari Ini</button>
+        <button class="btn filter-btn"        data-days="7"   data-label="7 Hari">7 Hari</button>
+        <button class="btn filter-btn"        data-days="30"  data-label="30 Hari">30 Hari</button>
+        <button class="btn filter-btn"        data-days="60"  data-label="2 Bulan">2 Bulan</button>
+        <button class="btn filter-btn"        data-days="180" data-label="6 Bulan">6 Bulan</button>
+        <button class="btn filter-btn"        data-days="365" data-label="1 Tahun">1 Tahun</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 STAT CARDS + SPARKLINE -->
+  <div class="row g-3 mb-4">
+    <!-- Views -->
+    <div class="col-sm-6 col-xl-3">
+      <div class="card card-stat p-3 h-100">
+        <div class="d-flex align-items-start justify-content-between">
+          <div class="stat-icon" style="background:var(--brand-light);color:var(--brand)"><i class="bi bi-eye-fill"></i></div>
+          <div class="sparkline-wrap"><canvas id="sp-views"></canvas></div>
+        </div>
+        <p class="text-secondary mb-0 mt-2" style="font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Page Views</p>
+        <h3 class="fw-bold mb-0 mt-1" id="sjv-views" style="font-size:1.9rem;"><span class="skeleton skeleton-lg"></span></h3>
+        <div class="d-flex align-items-center gap-2 mt-1">
+          <span class="comp-pill comp-neu" id="sjv-views-comp"><span class="skeleton" style="width:38px;height:1em"></span></span>
+          <small class="text-secondary" style="font-size:.72rem;" id="sjv-views-sub">vs periode sebelumnya</small>
+        </div>
+        <div class="trend-section mt-2">
+          <div class="trend-label">Rata-rata/hari</div>
+          <div class="trend-value text-brand" id="sjv-views-avg">—</div>
+        </div>
+      </div>
+    </div>
+    <!-- Unique -->
+    <div class="col-sm-6 col-xl-3">
+      <div class="card card-stat p-3 h-100">
+        <div class="d-flex align-items-start justify-content-between">
+          <div class="stat-icon" style="background:#e8f0fe;color:#1967d2"><i class="bi bi-people-fill"></i></div>
+          <div class="sparkline-wrap"><canvas id="sp-users"></canvas></div>
+        </div>
+        <p class="text-secondary mb-0 mt-2" style="font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Unique Visits</p>
+        <h3 class="fw-bold mb-0 mt-1" id="sjv-users" style="font-size:1.9rem;"><span class="skeleton skeleton-lg"></span></h3>
+        <div class="d-flex align-items-center gap-2 mt-1">
+          <span class="comp-pill comp-neu" id="sjv-users-comp"><span class="skeleton" style="width:38px;height:1em"></span></span>
+          <small class="text-secondary" style="font-size:.72rem;">vs periode sebelumnya</small>
+        </div>
+        <div class="trend-section mt-2">
+          <div class="trend-label">Rata-rata/hari</div>
+          <div class="trend-value" style="color:#1967d2" id="sjv-users-avg">—</div>
+        </div>
+      </div>
+    </div>
+    <!-- First Time -->
+    <div class="col-sm-6 col-xl-3">
+      <div class="card card-stat p-3 h-100">
+        <div class="d-flex align-items-start justify-content-between">
+          <div class="stat-icon" style="background:#e6f7e6;color:#0b6e0b"><i class="bi bi-person-plus-fill"></i></div>
+          <div class="sparkline-wrap"><canvas id="sp-new"></canvas></div>
+        </div>
+        <p class="text-secondary mb-0 mt-2" style="font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">First Time</p>
+        <h3 class="fw-bold mb-0 mt-1" id="sjv-newusers" style="font-size:1.9rem;"><span class="skeleton skeleton-lg"></span></h3>
+        <div class="d-flex align-items-center gap-2 mt-1">
+          <span class="comp-pill comp-neu" id="sjv-newusers-comp"><span class="skeleton" style="width:38px;height:1em"></span></span>
+          <small class="text-secondary" style="font-size:.72rem;">vs periode sebelumnya</small>
+        </div>
+        <div class="trend-section mt-2">
+          <div class="trend-label">Rata-rata/hari</div>
+          <div class="trend-value" style="color:#0b6e0b" id="sjv-new-avg">—</div>
+        </div>
+      </div>
+    </div>
+    <!-- Returning -->
+    <div class="col-sm-6 col-xl-3">
+      <div class="card card-stat p-3 h-100">
+        <div class="d-flex align-items-start justify-content-between">
+          <div class="stat-icon" style="background:#fff3e0;color:#b85e00"><i class="bi bi-arrow-repeat"></i></div>
+          <div class="sparkline-wrap"><canvas id="sp-ret"></canvas></div>
+        </div>
+        <p class="text-secondary mb-0 mt-2" style="font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Returning</p>
+        <h3 class="fw-bold mb-0 mt-1" id="sjv-returning" style="font-size:1.9rem;"><span class="skeleton skeleton-lg"></span></h3>
+        <div class="d-flex align-items-center gap-2 mt-1">
+          <span class="comp-pill comp-neu" id="sjv-returning-comp"><span class="skeleton" style="width:38px;height:1em"></span></span>
+          <small class="text-secondary" style="font-size:.72rem;">vs periode sebelumnya</small>
+        </div>
+        <div class="trend-section mt-2">
+          <div class="trend-label">Rata-rata/hari</div>
+          <div class="trend-value" style="color:#b85e00" id="sjv-ret-avg">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERBANDINGAN LINE CHART -->
+  <div class="card card-stat p-3 p-md-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <div>
+        <h5 class="fw-bold mb-0"><i class="bi bi-graph-up-arrow me-2 text-brand"></i><span id="chart-title-text">Tren Harian</span></h5>
+        <small class="text-secondary" id="chart-subtitle-text">Perbandingan metrik kunjungan per hari</small>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="badge bg-danger bg-opacity-10 text-danger d-none" id="sjv-chart-badge" style="font-size:.75rem;"></span>
+        <span class="badge-agg d-none" id="sjv-agg-badge"></span>
+        <span class="badge-period" id="sjv-period">Hari Ini</span>
+        <div class="btn-group btn-group-sm" id="chart-type-group">
+          <button class="btn btn-outline-secondary active" data-type="bar">Bar</button>
+          <button class="btn btn-outline-secondary" data-type="line">Line</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-container"><canvas id="sjv-chart"></canvas></div>
+    <div class="row g-3 mt-1 pt-3 border-top" id="comp-summary-row">
+      <div class="col-6 col-md-3 text-center">
+        <div class="text-secondary" style="font-size:.72rem;font-weight:600;text-transform:uppercase;">Periode Ini</div>
+        <div class="fw-bold text-brand" id="comp-curr-views" style="font-size:1.1rem;">—</div>
+        <div class="text-muted" style="font-size:.72rem;">Views</div>
+      </div>
+      <div class="col-6 col-md-3 text-center">
+        <div class="text-secondary" style="font-size:.72rem;font-weight:600;text-transform:uppercase;">Periode Lalu</div>
+        <div class="fw-bold" id="comp-prev-views" style="font-size:1.1rem;color:#64748b;">—</div>
+        <div class="text-muted" style="font-size:.72rem;">Views</div>
+      </div>
+      <div class="col-6 col-md-3 text-center">
+        <div class="text-secondary" style="font-size:.72rem;font-weight:600;text-transform:uppercase;">Selisih</div>
+        <div class="fw-bold" id="comp-diff-views" style="font-size:1.1rem;">—</div>
+        <div class="text-muted" style="font-size:.72rem;">Views</div>
+      </div>
+      <div class="col-6 col-md-3 text-center">
+        <div class="text-secondary" style="font-size:.72rem;font-weight:600;text-transform:uppercase;">Perubahan</div>
+        <div class="fw-bold" id="comp-pct-views" style="font-size:1.1rem;">—</div>
+        <div class="text-muted" style="font-size:.72rem;">Views %</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GEO MAP INTERAKTIF -->
+  <div class="card card-stat mb-4">
+    <div class="card-header bg-transparent border-0 pt-3 px-4 pb-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h5 class="fw-bold mb-0"><i class="bi bi-globe2 me-2 text-brand"></i>Visitor by Country</h5>
+        <small class="text-secondary">Klik penanda pada peta atau negara di daftar untuk memfilter data</small>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <div class="ga-badge" style="padding:4px 10px;">
+          <div style="display:flex;gap:2px;">
+            <div class="ga-dot" style="background:var(--ga-blue);width:7px;height:7px;"></div>
+            <div class="ga-dot" style="background:var(--ga-red);width:7px;height:7px;"></div>
+            <div class="ga-dot" style="background:var(--ga-yellow);width:7px;height:7px;"></div>
+            <div class="ga-dot" style="background:var(--ga-green);width:7px;height:7px;"></div>
+          </div>
+          <span style="font-size:.7rem;font-weight:700;color:#5f6368;">GA Data</span>
+        </div>
+        <span class="selected-country-chip" id="selected-chip">
+          <span id="selected-chip-text">–</span>
+          <span class="chip-x" id="chip-clear">✕</span>
+        </span>
+      </div>
+    </div>
+    <div class="card-body px-3 px-md-4">
+      <div id="country-info-panel">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <span id="panel-flag" style="font-size:2rem;"></span>
+            <div>
+              <div class="fw-bold" id="panel-country" style="font-size:1rem;"></div>
+              <small class="text-secondary">Data dari Google Analytics</small>
+            </div>
+          </div>
+          <button class="btn btn-sm rounded-pill" style="background:#fde8e8;color:var(--brand);font-weight:700;font-size:.78rem;" id="panel-clear-btn">✕ Hapus Filter</button>
+        </div>
+        <div class="row g-2">
+          <div class="col-6 col-md-3">
+            <div class="bg-white rounded-3 p-2 text-center border">
+              <div class="fw-bold text-brand" id="panel-sessions" style="font-size:1.2rem;">—</div>
+              <div class="text-secondary" style="font-size:.72rem;">Sessions</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="bg-white rounded-3 p-2 text-center border">
+              <div class="fw-bold" style="color:#1967d2;font-size:1.2rem;" id="panel-users">—</div>
+              <div class="text-secondary" style="font-size:.72rem;">Pengunjung</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="bg-white rounded-3 p-2 text-center border">
+              <div class="fw-bold" style="color:#0b6e0b;font-size:1.2rem;" id="panel-new">—</div>
+              <div class="text-secondary" style="font-size:.72rem;">Baru</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="bg-white rounded-3 p-2 text-center border">
+              <div class="fw-bold" style="color:#b85e00;font-size:1.2rem;" id="panel-pv">—</div>
+              <div class="text-secondary" style="font-size:.72rem;">Page Views</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-6">
+          <div class="geomap-container p-2">
+            <div class="geomap-svg-wrap">
+              <svg id="world-map-svg" viewBox="0 0 1010 560" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <radialGradient id="seaGrad" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#dbeafe"/>
+                    <stop offset="100%" stop-color="#bfdbfe"/>
+                  </radialGradient>
+                </defs>
+                <rect width="1010" height="560" fill="url(#seaGrad)" rx="16"/>
+                <line x1="0" y1="280" x2="1010" y2="280" stroke="#93c5fd" stroke-width="0.8" stroke-dasharray="4 6"/>
+                <line x1="505" y1="0" x2="505" y2="560" stroke="#93c5fd" stroke-width="0.8" stroke-dasharray="4 6"/>
+                <path d="M80,80 L200,70 L250,90 L270,130 L260,160 L280,200 L240,240 L200,260 L160,280 L130,310 L110,350 L90,330 L70,290 L60,240 L70,180 L80,150 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1.5"/>
+                <path d="M270,40 L310,30 L330,60 L300,80 L270,70 Z" fill="#d1d9e6" stroke="#a5b4cc" stroke-width="1"/>
+                <path d="M190,310 L240,290 L270,320 L280,370 L270,430 L240,470 L210,480 L190,460 L175,410 L170,360 L180,330 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1.5"/>
+                <path d="M430,80 L480,70 L510,80 L530,100 L520,130 L490,140 L470,160 L450,150 L430,130 L420,110 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1.5"/>
+                <path d="M440,170 L490,160 L520,180 L530,220 L520,280 L500,340 L470,380 L440,370 L420,330 L410,270 L420,210 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1.5"/>
+                <path d="M530,70 L650,60 L750,80 L800,100 L820,140 L800,180 L750,200 L700,210 L640,200 L590,190 L550,170 L530,140 L520,110 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1.5"/>
+                <path d="M540,180 L590,175 L610,200 L600,230 L570,230 L545,220 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1"/>
+                <path d="M620,190 L660,185 L670,220 L660,260 L640,280 L620,260 L610,230 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1"/>
+                <path d="M720,200 L760,195 L780,220 L760,240 L730,235 L715,220 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1"/>
+                <path d="M760,320 L840,310 L880,340 L870,390 L830,410 L780,400 L750,370 L755,340 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1.5"/>
+                <path d="M820,140 L840,135 L845,155 L830,160 L820,150 Z" fill="#c7d2e7" stroke="#a5b4cc" stroke-width="1"/>
+                <path d="M432,90 L442,85 L445,100 L435,105 Z" fill="#d1d9e6" stroke="#a5b4cc" stroke-width="1"/>
+                <g id="map-markers"></g>
+              </svg>
+            </div>
+            <div class="d-flex align-items-center justify-content-center gap-2 pb-2 pt-1" style="font-size:.72rem;color:#94a3b8;">
+              <i class="bi bi-pin-map-fill"></i>
+              <span>Hover untuk detail · Klik untuk filter</span>
+              <div style="display:flex;gap:8px;align-items:center;margin-left:8px;">
+                <div style="display:flex;align-items:center;gap:3px;"><div style="width:10px;height:10px;border-radius:50%;background:var(--brand);opacity:.8;"></div><span>Traffic Tinggi</span></div>
+                <div style="display:flex;align-items:center;gap:3px;"><div style="width:8px;height:8px;border-radius:50%;background:#f87171;opacity:.7;"></div><span>Traffic Rendah</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="fw-semibold" style="font-size:.85rem;color:#475569;"><i class="bi bi-list-ol me-1"></i>Top Negara</span>
+            <span class="text-secondary" style="font-size:.72rem;" id="country-count-label"></span>
+          </div>
+          <div class="country-list-scroll" id="country-list-container">
+            <div class="text-center py-4 text-secondary"><div class="spinner-border spinner-border-sm me-2"></div>Memuat data...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABEL DATA HARIAN -->
+  <div class="card card-stat">
+    <div class="card-header bg-transparent border-0 pt-3 px-3 pb-0 d-flex justify-content-between align-items-center">
+      <h5 class="fw-bold mb-0"><i class="bi bi-table me-2 text-brand"></i>Data Harian (10 Terbaru)</h5>
+      <span class="badge bg-danger bg-opacity-10 text-danger d-none" id="sjv-tbl-badge"></span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-4">Tanggal</th>
+              <th>Views</th>
+              <th>Unique</th>
+              <th>First Time</th>
+              <th>Returning</th>
+              <th>Proporsi</th>
+            </tr>
+          </thead>
+          <tbody id="sjv-tbody">
+            <tr><td colspan="6" class="text-center py-4 text-secondary">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GAS = 'https://script.google.com/macros/s/AKfycby5nuVUis43M4Pn1wJD3B00s0UvyEwv0z2iXnLEzQTU3ayH_t0qP42Qv-lZR2WMYl65SA/exec';
+
+  var chart = null;
+  var sparkCharts = {};
+  var activeDays = 1;
+  var activeCountry = null;
+  var rtTimer = null;
+  var countryListData = [];
+  var currentChartType = 'bar';
+
+  var PERIOD_LABELS = {1:'Hari Ini', 7:'7 Hari', 30:'30 Hari', 60:'2 Bulan', 180:'6 Bulan', 365:'1 Tahun'};
+  var MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+
+  var GEO_POSITIONS = {
+    'Indonesia':      {cx:760, cy:310},
+    'United States':  {cx:160, cy:190},
+    'India':          {cx:635, cy:230},
+    'China':          {cx:730, cy:170},
+    'Germany':        {cx:480, cy:110},
+    'Japan':          {cx:828, cy:152},
+    'Brazil':         {cx:225, cy:380},
+    'United Kingdom': {cx:437, cy:97},
+    'France':         {cx:460, cy:115},
+    'Australia':      {cx:820, cy:370},
+    'Malaysia':       {cx:745, cy:270},
+    'Singapore':      {cx:752, cy:278},
+    'Netherlands':    {cx:466, cy:104},
+    'Canada':         {cx:140, cy:110},
+    'South Korea':    {cx:808, cy:155},
+    'Italy':          {cx:490, cy:130},
+    'Spain':          {cx:445, cy:130},
+    'Pakistan':       {cx:613, cy:180},
+    'Bangladesh':     {cx:660, cy:210},
+    'Egypt':          {cx:510, cy:200},
+  };
+
+  function defaultPos(idx) {
+    var positions = [
+      {cx:160,cy:190},{cx:635,cy:230},{cx:730,cy:170},{cx:225,cy:380},
+      {cx:480,cy:110},{cx:760,cy:310},{cx:820,cy:370},{cx:460,cy:115},
+      {cx:437,cy:97},{cx:828,cy:152}
+    ];
+    return positions[idx % positions.length];
+  }
+
+  function fmtNum(n) { return Number(n||0).toLocaleString('id-ID'); }
+  function fmtDate(d) { return d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8); }
+  function fmtDateDisplay(d) {
+    var p = d.split('-');
+    return parseInt(p[2],10)+' '+MONTHS[parseInt(p[1],10)-1]+' '+p[0];
+  }
+  function countryFlag(code) {
+    if (!code || code.length !== 2) return '🌐';
+    return String.fromCodePoint.apply(null,
+      code.toUpperCase().split('').map(function(c){return 0x1F1E6-65+c.charCodeAt(0);}));
+  }
+
+  function api(type, country) {
+    var url = GAS + '?type=' + type + '&days=' + activeDays;
+    if (country) url += '&country=' + encodeURIComponent(country);
+    return fetch(url).then(r => r.ok ? r.json() : Promise.reject('HTTP '+r.status));
+  }
+
+  /* ── AGREGASI: harian (<=60 hari), mingguan (180 hari), bulanan (365 hari) ── */
+  function getAggMode(days) {
+    if (days >= 365) return 'month';
+    if (days >= 180) return 'week';
+    return 'day';
+  }
+
+  function aggregateData(sortedData, mode) {
+    if (mode === 'day') {
+      return sortedData.map(function(x) {
+        return { label: fmtDate(x.date), pageViews: x.pageViews, activeUsers: x.activeUsers, newUsers: x.newUsers };
+      });
+    }
+    var buckets = {};
+    var order = [];
+    sortedData.forEach(function(x) {
+      var y = parseInt(x.date.slice(0,4), 10);
+      var m = parseInt(x.date.slice(4,6), 10);
+      var d = parseInt(x.date.slice(6,8), 10);
+      var key, label;
+      if (mode === 'month') {
+        key = x.date.slice(0,6);
+        label = MONTHS[m-1] + ' ' + y;
+      } else {
+        var dt = new Date(Date.UTC(y, m-1, d));
+        var dow = (dt.getUTCDay() + 6) % 7;          // Senin = 0
+        dt.setUTCDate(dt.getUTCDate() - dow);
+        key = dt.toISOString().slice(0,10);
+        label = dt.getUTCDate() + ' ' + MONTHS[dt.getUTCMonth()] + ' ' + String(dt.getUTCFullYear()).slice(2);
+      }
+      if (!buckets[key]) {
+        buckets[key] = { label: label, pageViews: 0, activeUsers: 0, newUsers: 0 };
+        order.push(key);
+      }
+      buckets[key].pageViews   += (x.pageViews   || 0);
+      buckets[key].activeUsers += (x.activeUsers || 0);
+      buckets[key].newUsers    += (x.newUsers    || 0);
+    });
+    return order.map(function(k) { return buckets[k]; });
+  }
+
+  function buildSparkline(canvasId, data, color) {
+    if (sparkCharts[canvasId]) { sparkCharts[canvasId].destroy(); }
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    sparkCharts[canvasId] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.map((_,i) => i),
+        datasets: [{
+          data: data,
+          borderColor: color,
+          borderWidth: 2,
+          fill: true,
+          backgroundColor: color.replace('rgb','rgba').replace(')',',0.12)'),
+          tension: 0.4,
+          pointRadius: 0,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: {display:false}, tooltip: {enabled:false} },
+        scales: { x:{display:false}, y:{display:false} },
+        animation: { duration: 600 }
+      }
+    });
+  }
+
+  function setCompPill(id, val) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (val === null) { el.className='comp-pill comp-neu'; el.textContent='—'; return; }
+    var sign = val >= 0 ? '▲' : '▼';
+    el.className = 'comp-pill ' + (val>=0 ? 'comp-up' : 'comp-down');
+    el.textContent = sign+' '+Math.abs(val)+'%';
+  }
+
+  var tooltip = document.getElementById('map-tooltip');
+  function showTooltip(x, y, data) {
+    document.getElementById('tt-country').textContent = data.flag+' '+data.country;
+    document.getElementById('tt-sessions').textContent = fmtNum(data.sessions);
+    document.getElementById('tt-users').textContent = fmtNum(data.activeUsers);
+    document.getElementById('tt-pageviews').textContent = fmtNum(data.pageViews);
+    document.getElementById('tt-newusers').textContent = fmtNum(data.newUsers);
+    document.getElementById('tt-bar-inner').style.width = data.pct + '%';
+    tooltip.classList.add('visible');
+    positionTooltip(x, y);
+  }
+  function positionTooltip(x, y) {
+    var tw = tooltip.offsetWidth||220, th = tooltip.offsetHeight||160;
+    var wx = window.innerWidth, wy = window.innerHeight;
+    var left = x + 16, top = y + 16;
+    if (left + tw > wx - 10) left = x - tw - 10;
+    if (top + th > wy - 10) top = y - th - 10;
+    tooltip.style.left = left + 'px';
+    tooltip.style.top  = top  + 'px';
+  }
+  function hideTooltip() { tooltip.classList.remove('visible'); }
+
+  function renderMapMarkers() {
+    var g = document.getElementById('map-markers');
+    if (!g) return;
+    g.innerHTML = '';
+    if (!countryListData.length) return;
+    var maxSess = Math.max.apply(null, countryListData.map(c=>c.sessions)||[1]);
+    countryListData.slice(0, 20).forEach(function(c, idx) {
+      var pos = GEO_POSITIONS[c.country] || defaultPos(idx);
+      var pct = c.sessions / maxSess;
+      var r = Math.max(8, Math.min(22, 8 + pct * 18));
+      var isActive = activeCountry === c.country;
+      var flag = countryFlag(c.countryCode);
+
+      if (idx < 5) {
+        var ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        ring.setAttribute('cx', pos.cx);
+        ring.setAttribute('cy', pos.cy);
+        ring.setAttribute('r', r);
+        ring.setAttribute('fill', 'none');
+        ring.setAttribute('stroke', isActive ? '#fbbf24' : '#9b0000');
+        ring.setAttribute('stroke-width', '2');
+        ring.setAttribute('class', 'marker-ring');
+        ring.style.animationDelay = (idx * 0.4) + 's';
+        g.appendChild(ring);
+      }
+
+      var circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      circle.setAttribute('cx', pos.cx);
+      circle.setAttribute('cy', pos.cy);
+      circle.setAttribute('r', r);
+      circle.setAttribute('fill', isActive ? '#fbbf24' : '#9b0000');
+      circle.setAttribute('opacity', isActive ? '1' : (0.55 + pct*0.4));
+      circle.setAttribute('stroke', 'white');
+      circle.setAttribute('stroke-width', isActive ? '3' : '2');
+      circle.setAttribute('cursor', 'pointer');
+      circle.style.filter = isActive ? 'drop-shadow(0 0 8px rgba(251,191,36,0.8))' : '';
+      circle.setAttribute('class', 'map-bubble-pulse');
+
+      circle.addEventListener('mousemove', function(e) {
+        showTooltip(e.clientX, e.clientY, {
+          flag: flag, country: c.country,
+          sessions: c.sessions, activeUsers: c.activeUsers,
+          pageViews: c.pageViews, newUsers: c.newUsers,
+          pct: Math.round(pct*100)
+        });
+      });
+      circle.addEventListener('mouseleave', hideTooltip);
+      circle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideTooltip();
+        activeCountry = (activeCountry === c.country) ? null : c.country;
+        updateCountryUI(c);
+        renderMapMarkers();
+        renderCountryList();
+        loadStats();
+      });
+      g.appendChild(circle);
+
+      if (r >= 12) {
+        var txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+        txt.setAttribute('x', pos.cx);
+        txt.setAttribute('y', pos.cy + 4);
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('fill', 'white');
+        txt.setAttribute('font-size', Math.max(8, r*0.65));
+        txt.setAttribute('font-weight', '700');
+        txt.setAttribute('font-family', "'Plus Jakarta Sans',sans-serif");
+        txt.setAttribute('pointer-events', 'none');
+        txt.textContent = idx+1;
+        g.appendChild(txt);
+      }
+    });
+  }
+
+  function showCountryPanel(c) {
+    var panel = document.getElementById('country-info-panel');
+    if (!c) { panel.classList.remove('visible'); return; }
+    var flag = countryFlag(c.countryCode);
+    document.getElementById('panel-flag').textContent = flag;
+    document.getElementById('panel-country').textContent = c.country;
+    document.getElementById('panel-sessions').textContent = fmtNum(c.sessions);
+    document.getElementById('panel-users').textContent = fmtNum(c.activeUsers);
+    document.getElementById('panel-new').textContent = fmtNum(c.newUsers);
+    document.getElementById('panel-pv').textContent = fmtNum(c.pageViews);
+    panel.classList.add('visible');
+  }
+
+  function updateCountryUI(cData) {
+    var chip = document.getElementById('selected-chip');
+    var chipText = document.getElementById('selected-chip-text');
+    var badges = document.querySelectorAll('#sjv-chart-badge, #sjv-tbl-badge');
+    if (activeCountry && cData) {
+      chip.classList.add('visible');
+      chipText.textContent = countryFlag(cData.countryCode)+' '+activeCountry;
+      badges.forEach(b => { b.classList.remove('d-none'); b.textContent = '🌏 '+activeCountry; });
+      showCountryPanel(cData);
+    } else if (activeCountry) {
+      var found = countryListData.find(c=>c.country===activeCountry);
+      if (found) {
+        chip.classList.add('visible');
+        chipText.textContent = countryFlag(found.countryCode)+' '+activeCountry;
+        badges.forEach(b => { b.classList.remove('d-none'); b.textContent = '🌏 '+activeCountry; });
+        showCountryPanel(found);
+      }
+    } else {
+      chip.classList.remove('visible');
+      badges.forEach(b => b.classList.add('d-none'));
+      showCountryPanel(null);
+    }
+  }
+
+  function renderCountryList() {
+    var container = document.getElementById('country-list-container');
+    var label = document.getElementById('country-count-label');
+    if (!countryListData.length) {
+      container.innerHTML = '<div class="text-secondary p-3 text-center">Tidak ada data negara</div>';
+      return;
+    }
+    if (label) label.textContent = countryListData.length + ' negara';
+    var maxS = Math.max.apply(null, countryListData.map(c=>c.sessions)||[1]);
+    var html = '';
+    countryListData.forEach(function(c, idx) {
+      var pct = (c.sessions/maxS)*100;
+      var flag = countryFlag(c.countryCode);
+      var active = (activeCountry === c.country) ? 'active' : '';
+      html += `<div class="country-item ${active}" data-country="${c.country}" data-idx="${idx}">
+        <div class="country-flag">${flag}</div>
+        <div class="country-bar-wrap flex-grow-1">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="country-name">${c.country}</span>
+            <span class="country-sessions">${fmtNum(c.sessions)}</span>
+          </div>
+          <div class="c-bar"><div class="c-bar-fill" style="width:${pct}%"></div></div>
+          <div class="d-flex gap-2 mt-1" style="font-size:.7rem;color:#94a3b8;">
+            <span>👤 ${fmtNum(c.activeUsers)}</span>
+            <span>🆕 ${fmtNum(c.newUsers)}</span>
+            <span>📄 ${fmtNum(c.pageViews)}</span>
+          </div>
+        </div>
+        <div style="color:#94a3b8;font-size:.78rem;font-weight:700;min-width:20px;text-align:right;">#${idx+1}</div>
+      </div>`;
+    });
+    container.innerHTML = html;
+    container.querySelectorAll('.country-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var country = el.dataset.country;
+        var idx = parseInt(el.dataset.idx, 10);
+        var cData = countryListData[idx];
+        activeCountry = (activeCountry === country) ? null : country;
+        updateCountryUI(activeCountry ? cData : null);
+        renderMapMarkers();
+        renderCountryList();
+        loadStats();
+      });
+    });
+  }
+
+  function loadCountries() {
+    document.getElementById('country-list-container').innerHTML =
+      '<div class="text-center py-4 text-secondary"><div class="spinner-border spinner-border-sm me-2"></div>Memuat...</div>';
+    api('countries', null).then(function(data) {
+      countryListData = data || [];
+      renderCountryList();
+      renderMapMarkers();
+      updateCountryUI();
+    }).catch(function() {
+      document.getElementById('country-list-container').innerHTML =
+        '<div class="text-danger p-3 text-center">⚠️ Gagal memuat data negara</div>';
+    });
+  }
+
+  function refreshRealtime() {
+    fetch(GAS+'?type=realtime').then(r=>r.json())
+      .then(d=>{ document.getElementById('sjv-rt').textContent = fmtNum(d.activeUsers||0); })
+      .catch(()=>{});
+  }
+
+  function updateCompRow(chartData) {
+    if (!chartData || chartData.length < 2) {
+      ['comp-curr-views','comp-prev-views','comp-diff-views','comp-pct-views'].forEach(id=>{
+        var el=document.getElementById(id); if(el) el.textContent='—';
+      });
+      return;
+    }
+    var sorted = [...chartData].sort((a,b)=>a.date.localeCompare(b.date));
+    var mid = Math.floor(sorted.length/2);
+    var curr = sorted.slice(mid).reduce((a,d)=>({v:a.v+d.pageViews,u:a.u+d.activeUsers,n:a.n+d.newUsers}),{v:0,u:0,n:0});
+    var prev = sorted.slice(0,mid).reduce((a,d)=>({v:a.v+d.pageViews,u:a.u+d.activeUsers,n:a.n+d.newUsers}),{v:0,u:0,n:0});
+    var diff = curr.v - prev.v;
+    var pct = prev.v ? Math.round((diff/prev.v)*1000)/10 : null;
+    document.getElementById('comp-curr-views').textContent = fmtNum(curr.v);
+    document.getElementById('comp-prev-views').textContent = fmtNum(prev.v);
+    var diffEl = document.getElementById('comp-diff-views');
+    diffEl.textContent = (diff>=0?'+':'')+fmtNum(diff);
+    diffEl.style.color = diff>=0?'#0b6e0b':'#9b0000';
+    var pctEl = document.getElementById('comp-pct-views');
+    pctEl.textContent = pct!==null?((pct>=0?'▲':'▼')+Math.abs(pct)+'%'):'—';
+    pctEl.style.color = (pct!==null&&pct>=0)?'#0b6e0b':'#9b0000';
+  }
+
+  var trendArrowPlugin = {
+    id: 'trendArrows',
+    afterDatasetsDraw: function(chart) {
+      if (chart.data.labels.length > 35) return;
+      var ctx = chart.ctx;
+      var ds0 = chart.data.datasets[0];
+      var meta0 = chart.getDatasetMeta(0);
+      if (!meta0.visible) return;
+      ctx.save();
+      for (var i = 1; i < meta0.data.length; i++) {
+        var prevVal = ds0.data[i - 1];
+        var currVal = ds0.data[i];
+        if (!prevVal || prevVal === 0) continue;
+        var pct = Math.round((currVal - prevVal) / prevVal * 100);
+        var isUp = pct >= 0;
+        var elem = meta0.data[i];
+        var x = elem.x;
+        var y = elem.y - 16;
+        var text = (isUp ? '▲' : '▼') + Math.abs(pct) + '%';
+        ctx.font = 'bold 8.5px "Plus Jakarta Sans", sans-serif';
+        var tw = ctx.measureText(text).width;
+        ctx.fillStyle = isUp ? 'rgba(230,247,230,0.92)' : 'rgba(253,232,232,0.92)';
+        ctx.beginPath();
+        var px = x - tw / 2 - 4, py = y - 10, pw = tw + 8, ph = 13;
+        ctx.moveTo(px + 4, py); ctx.lineTo(px + pw - 4, py);
+        ctx.quadraticCurveTo(px + pw, py, px + pw, py + 4);
+        ctx.lineTo(px + pw, py + ph - 4);
+        ctx.quadraticCurveTo(px + pw, py + ph, px + pw - 4, py + ph);
+        ctx.lineTo(px + 4, py + ph);
+        ctx.quadraticCurveTo(px, py + ph, px, py + ph - 4);
+        ctx.lineTo(px, py + 4);
+        ctx.quadraticCurveTo(px, py, px + 4, py);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = isUp ? '#0b6e0b' : '#9b0000';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, py + ph / 2);
+      }
+      ctx.restore();
+    }
+  };
+
+  function loadStats() {
+    ['sjv-views','sjv-users','sjv-newusers','sjv-returning'].forEach(id=>{
+      var el=document.getElementById(id);
+      if(el) el.innerHTML='<span class="skeleton skeleton-lg"></span>';
+    });
+    var lbl = PERIOD_LABELS[activeDays] || '';
+    document.getElementById('sjv-period').textContent = lbl;
+    document.getElementById('sjv-period-label').textContent = lbl;
+
+    Promise.all([api('summary', activeCountry), api('chart', activeCountry)])
+      .then(function(res) {
+        document.getElementById('sjv-err').classList.add('d-none');
+        var s = res[0]||{}, cd = res[1]||[];
+        var ret = s.returningUsers || 0;
+
+        document.getElementById('sjv-views').textContent    = fmtNum(s.pageViews||0);
+        document.getElementById('sjv-users').textContent    = fmtNum(s.activeUsers||0);
+        document.getElementById('sjv-newusers').textContent = fmtNum(s.newUsers||0);
+        document.getElementById('sjv-returning').textContent= fmtNum(ret);
+        document.getElementById('sjv-ts').innerHTML = '✅ '+new Date().toLocaleTimeString('id-ID');
+
+        var days2 = Math.max(1, cd.length||1);
+        document.getElementById('sjv-views-avg').textContent  = fmtNum(Math.round((s.pageViews||0)/days2));
+        document.getElementById('sjv-users-avg').textContent  = fmtNum(Math.round((s.activeUsers||0)/days2));
+        document.getElementById('sjv-new-avg').textContent    = fmtNum(Math.round((s.newUsers||0)/days2));
+        document.getElementById('sjv-ret-avg').textContent    = fmtNum(Math.round(ret/days2));
+
+        var cdSorted = [...cd].sort((a,b)=>a.date.localeCompare(b.date));
+
+        // Agregasi untuk grafik & sparkline
+        var aggMode = getAggMode(activeDays);
+        var agg = aggregateData(cdSorted, aggMode);
+        var unitName   = aggMode === 'month' ? 'Bulanan' : (aggMode === 'week' ? 'Mingguan' : 'Harian');
+        var unitPer    = aggMode === 'month' ? 'bulan'   : (aggMode === 'week' ? 'minggu'   : 'hari');
+        var cmpLabel   = aggMode === 'month' ? 'vs bulan lalu' : (aggMode === 'week' ? 'vs minggu lalu' : 'vs kemarin');
+        var maWindow   = aggMode === 'month' ? 3 : (aggMode === 'week' ? 4 : 7);
+        var maLabel    = 'Tren MA-' + maWindow;
+
+        document.getElementById('chart-title-text').textContent = 'Tren ' + unitName;
+        document.getElementById('chart-subtitle-text').textContent = 'Perbandingan metrik kunjungan per ' + unitPer;
+        var aggBadge = document.getElementById('sjv-agg-badge');
+        if (aggMode === 'day') { aggBadge.classList.add('d-none'); }
+        else { aggBadge.classList.remove('d-none'); aggBadge.textContent = '📊 Dikelompokkan per ' + unitPer; }
+
+        buildSparkline('sp-views', agg.map(x=>x.pageViews),   'rgb(155,0,0)');
+        buildSparkline('sp-users', agg.map(x=>x.activeUsers), 'rgb(25,103,210)');
+        buildSparkline('sp-new',   agg.map(x=>x.newUsers),    'rgb(11,110,11)');
+        buildSparkline('sp-ret',   agg.map(x=>Math.max(0,x.activeUsers-x.newUsers)), 'rgb(184,94,0)');
+
+        if (cdSorted.length >= 4) {
+          var mid = Math.floor(cdSorted.length/2);
+          var c2 = cdSorted.slice(mid).reduce((a,d)=>({v:a.v+d.pageViews,u:a.u+d.activeUsers,n:a.n+d.newUsers}),{v:0,u:0,n:0});
+          var p2 = cdSorted.slice(0,mid).reduce((a,d)=>({v:a.v+d.pageViews,u:a.u+d.activeUsers,n:a.n+d.newUsers}),{v:0,u:0,n:0});
+          function pct(cur,prv){ return prv ? Math.round((cur-prv)/prv*1000)/10 : null; }
+          setCompPill('sjv-views-comp',    pct(c2.v, p2.v));
+          setCompPill('sjv-users-comp',    pct(c2.u, p2.u));
+          setCompPill('sjv-newusers-comp', pct(c2.n, p2.n));
+          setCompPill('sjv-returning-comp',pct(c2.u-c2.n, p2.u-p2.n));
+        } else {
+          ['sjv-views-comp','sjv-users-comp','sjv-newusers-comp','sjv-returning-comp']
+            .forEach(id=>setCompPill(id,null));
+        }
+
+        updateCompRow(cd);
+
+        var labels = agg.map(x => x.label);
+        var showLabels = agg.length <= 35;
+        var manyPoints = agg.length > 45;
+        var isLine = currentChartType === 'line';
+        var barRadius = manyPoints ? 2 : 7;
+
+        var maData = agg.map(function(_, i, arr) {
+          var win = arr.slice(Math.max(0, i - (maWindow - 1)), i + 1);
+          return Math.round(win.reduce(function(sum, d) { return sum + d.pageViews; }, 0) / win.length);
+        });
+
+        if (chart) chart.destroy();
+        chart = new Chart(document.getElementById('sjv-chart'), {
+          type: currentChartType,
+          plugins: [trendArrowPlugin, ChartDataLabels],
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Page Views',
+                data: agg.map(x => x.pageViews),
+                backgroundColor: 'rgba(155,0,0,0.75)',
+                borderColor: '#9b0000',
+                borderRadius: barRadius,
+                fill: isLine,
+                tension: 0.4,
+                borderWidth: 2,
+                pointRadius: (isLine && !manyPoints) ? 4 : 0,
+                pointHoverRadius: 7,
+                pointBackgroundColor: '#9b0000',
+                datalabels: {
+                  display: showLabels && !isLine,
+                  anchor: 'end', align: 'end',
+                  color: '#9b0000', font: { size: 9, weight: '700', family: "'Plus Jakarta Sans',sans-serif" },
+                  formatter: function(v) { return v >= 1000 ? (v/1000).toFixed(1)+'k' : v; },
+                  offset: 2,
+                }
+              },
+              {
+                label: 'Unique Visits',
+                data: agg.map(x => x.activeUsers),
+                backgroundColor: 'rgba(25,103,210,0.65)',
+                borderColor: '#1967d2',
+                borderRadius: barRadius,
+                fill: false, tension: 0.4, borderWidth: 2,
+                pointRadius: (isLine && !manyPoints) ? 3 : 0,
+                pointHoverRadius: 6, pointBackgroundColor: '#1967d2',
+                datalabels: { display: false }
+              },
+              {
+                label: 'First Time',
+                data: agg.map(x => x.newUsers),
+                backgroundColor: 'rgba(11,110,11,0.65)',
+                borderColor: '#0b6e0b',
+                borderRadius: barRadius,
+                fill: false, tension: 0.4, borderWidth: 2,
+                pointRadius: (isLine && !manyPoints) ? 3 : 0,
+                pointHoverRadius: 6, pointBackgroundColor: '#0b6e0b',
+                datalabels: { display: false }
+              },
+              {
+                label: 'Returning',
+                data: agg.map(x => Math.max(0, x.activeUsers - x.newUsers)),
+                backgroundColor: 'rgba(184,94,0,0.65)',
+                borderColor: '#b85e00',
+                borderRadius: barRadius,
+                fill: false, tension: 0.4, borderWidth: 2,
+                pointRadius: (isLine && !manyPoints) ? 3 : 0,
+                pointHoverRadius: 6, pointBackgroundColor: '#b85e00',
+                datalabels: { display: false }
+              },
+              {
+                label: maLabel,
+                data: maData,
+                type: 'line',
+                borderColor: 'rgba(99,102,241,0.85)',
+                borderWidth: 2,
+                borderDash: [5, 4],
+                pointRadius: 0, pointHoverRadius: 5,
+                fill: false, tension: 0.4,
+                hidden: agg.length <= maWindow,
+                datalabels: { display: false }
+              }
+            ]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              tooltip: {
+                backgroundColor: 'rgba(15,23,42,0.95)',
+                titleColor: '#f8fafc', bodyColor: '#cbd5e1',
+                padding: 14, borderColor: 'rgba(255,255,255,0.1)',
+                borderWidth: 1, cornerRadius: 12,
+                callbacks: {
+                  label: function(ctx) {
+                    var val = ctx.parsed.y;
+                    var prev = ctx.dataIndex > 0 ? ctx.dataset.data[ctx.dataIndex - 1] : null;
+                    var base = ctx.dataset.label + ': ' + fmtNum(val);
+                    if (prev !== null && prev > 0 && ctx.datasetIndex === 0) {
+                      var diff = val - prev;
+                      var pc = Math.round(diff / prev * 100);
+                      base += '  ' + (diff >= 0 ? '▲' : '▼') + Math.abs(pc) + '% ' + cmpLabel;
+                    }
+                    return base;
+                  },
+                  title: function(items) {
+                    var t = items[0].label;
+                    if (aggMode === 'week') t = 'Minggu ' + t;
+                    return '📅 ' + t;
+                  }
+                }
+              },
+              legend: {
+                position: 'bottom',
+                labels: {
+                  usePointStyle: true, padding: 18,
+                  font: { family: "'Plus Jakarta Sans',sans-serif", size: 12 },
+                  generateLabels: function(ch) {
+                    return Chart.defaults.plugins.legend.labels.generateLabels(ch).map(function(item) {
+                      if (item.text.indexOf('Tren MA') === 0) item.text = '〰 ' + item.text;
+                      return item;
+                    });
+                  }
+                }
+              },
+              datalabels: { display: false }
+            },
+            scales: {
+              x: {
+                grid: { color: 'rgba(0,0,0,0.04)' },
+                ticks: { font: { size: 10, family: "'Plus Jakarta Sans',sans-serif" }, maxRotation: 45, maxTicksLimit: 20 }
+              },
+              y: {
+                grid: { color: 'rgba(0,0,0,0.06)' },
+                ticks: {
+                  callback: function(v) { return v >= 1000 ? (v/1000).toFixed(1)+'k' : fmtNum(v); },
+                  font: { size: 10, family: "'Plus Jakarta Sans',sans-serif" }
+                }
+              }
+            },
+            animation: { duration: 500, easing: 'easeInOutQuart' }
+          }
+        });
+
+        // Tabel tetap harian (10 hari terbaru)
+        var rows = [...cd].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+        var maxV = Math.max.apply(null, rows.map(x=>x.pageViews)||[1]);
+        document.getElementById('sjv-tbody').innerHTML = rows.map(x=>{
+          var r2 = Math.max(0,x.activeUsers-x.newUsers);
+          var pctW = maxV ? Math.round((x.pageViews/maxV)*100) : 0;
+          return `<tr>
+            <td class="ps-4 fw-semibold">${fmtDate(x.date)}</td>
+            <td class="text-brand fw-bold">${fmtNum(x.pageViews)}</td>
+            <td>${fmtNum(x.activeUsers)}</td>
+            <td>${fmtNum(x.newUsers)}</td>
+            <td>${fmtNum(r2)}</td>
+            <td><div class="progress" style="height:6px;width:80px;border-radius:6px;"><div class="progress-bar bg-danger" style="width:${pctW}%;border-radius:6px;"></div></div></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="6" class="text-center py-3 text-secondary">Tidak ada data</td></tr>';
+      })
+      .catch(function(err) {
+        document.getElementById('sjv-err').classList.remove('d-none');
+        document.getElementById('sjv-err').innerHTML = '⚠️ '+((err && err.message) || err || 'Gagal memuat data statistik');
+      });
+  }
+
+  document.querySelectorAll('#chart-type-group .btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('#chart-type-group .btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentChartType = btn.dataset.type;
+      loadStats();
+    });
+  });
+
+  document.querySelectorAll('#sjv .filter-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('#sjv .filter-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      activeDays = parseInt(btn.dataset.days, 10);
+      loadCountries(); loadStats();
+    });
+  });
+
+  document.getElementById('chip-clear').addEventListener('click', function() {
+    activeCountry = null;
+    updateCountryUI(null);
+    renderMapMarkers();
+    renderCountryList();
+    loadStats();
+  });
+
+  document.getElementById('panel-clear-btn').addEventListener('click', function() {
+    activeCountry = null;
+    updateCountryUI(null);
+    renderMapMarkers();
+    renderCountryList();
+    loadStats();
+  });
+
+  document.getElementById('world-map-svg').addEventListener('click', function() {
+    activeCountry = null;
+    updateCountryUI(null);
+    renderMapMarkers();
+    renderCountryList();
+    loadStats();
+  });
+
+  loadCountries();
+  loadStats();
+  refreshRealtime();
+  clearInterval(rtTimer);
+  rtTimer = setInterval(refreshRealtime, 30000);
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
